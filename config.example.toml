@@ -1,9 +1,6 @@
 # Optional: GitHub personal access token (avoids 60 req/hr rate limit)
 # github_token = "ghp_..."
 
-# Optional: path to state file (default: ~/.local/share/release-puller/state.json)
-# state_file = "/path/to/state.json"
-
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"
