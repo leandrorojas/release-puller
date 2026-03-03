@@ -29,18 +29,20 @@ def get_latest_release(owner: str, repo: str, token: str | None = None) -> str |
     return data["tag_name"]
 
 
-def load_state(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return json.load(f)
-
-
-def save_state(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+def get_current_tag(local_path: Path) -> str | None:
+    """Return the tag checked out in local_path, or None if not on an exact tag."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match"],
+            cwd=local_path,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
 
 
 def sync_repo(github_url: str, local_path: Path, tag: str) -> None:
@@ -67,16 +69,11 @@ def sync_repo(github_url: str, local_path: Path, tag: str) -> None:
 def run(config: dict) -> None:
     token = config.get("github_token") or os.environ.get("GITHUB_TOKEN")
 
-    default_state = Path.home() / ".local" / "share" / "release-puller" / "state.json"
-    state_path = Path(config.get("state_file", str(default_state)))
-    state = load_state(state_path)
-
     repos = config.get("repos", [])
     if not repos:
         print("No repos configured.", file=sys.stderr)
         return
 
-    changed = False
     for repo_cfg in repos:
         slug = repo_cfg["github"]
         local_path = Path(repo_cfg["local_path"]).expanduser()
@@ -94,7 +91,7 @@ def run(config: dict) -> None:
             print(f"[{slug}] no releases found, skipping")
             continue
 
-        current = state.get(slug)
+        current = get_current_tag(local_path) if local_path.exists() else None
         if tag == current:
             print(f"[{slug}] up to date ({tag})")
             continue
@@ -108,10 +105,4 @@ def run(config: dict) -> None:
             print(f"[{slug}] git error: {e}", file=sys.stderr)
             continue
 
-        state[slug] = tag
-        changed = True
         print(f"[{slug}] synced to {tag}")
-
-    if changed:
-        save_state(state_path, state)
-        print(f"State saved to {state_path}")
