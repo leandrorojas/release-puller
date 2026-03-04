@@ -4,9 +4,15 @@ Polls GitHub releases and pulls the latest version when a new one is detected.
 
 ## Install
 
+The `pyfangs` dependency is fetched from a private GitHub repo via SSH. Make sure your SSH key is loaded before running `uv sync`, otherwise the command will hang silently waiting for authentication:
+
 ```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
 uv sync
 ```
+
+If `uv sync` appears stuck, run `uv sync -v` to see verbose output and get the SSH passphrase prompt.
 
 ## Usage
 
