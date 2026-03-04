@@ -4,22 +4,10 @@ Polls GitHub releases and pulls the latest version when a new one is detected.
 
 Zero external dependencies — stdlib only (Python 3.11+).
 
-## Install
-
-```bash
-pip install -e .
-```
-
 ## Usage
 
 ```bash
-release-puller --config config.toml
-```
-
-Or via module:
-
-```bash
-python -m release_puller --config config.toml
+python3 src/rp.py --config config.toml
 ```
 
 ## Configuration

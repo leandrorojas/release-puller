@@ -24,13 +24,8 @@ Key design principles:
 ## Project Structure
 
 ```
-pyproject.toml              — package metadata, entry point, dev deps
-config.example.toml         — example TOML config
-src/release_puller/
-  __init__.py               — __version__
-  __main__.py               — python -m release_puller support
-  cli.py                    — argparse CLI, TOML config loading, calls core.run()
-  core.py                   — get_latest_release(), get_current_tag(), sync_repo(), run()
+src/rp.py               — single-file script: CLI, config loading, GitHub API, git sync
+config.example.toml      — example TOML config
 ```
 
 ## Configuration
@@ -42,20 +37,10 @@ Config is a TOML file with:
   - `local_path` — where to clone/sync
   - `protocol` (optional) — `"https"` (default) or `"ssh"`
 
-## Development Setup
+## Running
 
 ```bash
-# Install in editable mode
-pip install -e .
-
-# Run the CLI
-release-puller --config config.example.toml
-
-# Install dev deps and run tests/lint
-pip install -e ".[dev]"
-pytest
-ruff check .
-ruff format .
+python3 src/rp.py --config config.example.toml
 ```
 
 ## GitHub API

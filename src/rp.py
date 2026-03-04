@@ -1,7 +1,11 @@
+"""release-puller — poll GitHub releases and pull the latest version."""
+
+import argparse
 import json
 import os
 import subprocess
 import sys
+import tomllib
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -110,3 +114,33 @@ def run(config: dict) -> None:
             continue
 
         print(f"[{slug}] synced to {tag}")
+
+
+def load_config(path: Path) -> dict:
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="release-puller",
+        description="Poll GitHub releases and pull the latest version.",
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        type=Path,
+        help="Path to TOML config file",
+    )
+    args = parser.parse_args()
+
+    if not args.config.exists():
+        print(f"error: config file not found: {args.config}", file=sys.stderr)
+        sys.exit(1)
+
+    config = load_config(args.config)
+    run(config)
+
+
+if __name__ == "__main__":
+    main()
