@@ -15,23 +15,32 @@ On each invocation the tool:
 2. For each configured repo, calls the GitHub Releases API to get the latest release tag
 3. If the repo is already cloned, checks the current tag on disk via `git describe --tags --exact-match`
 4. If the tag matches — skips. If it's new — clones or fetches + checks out the tag
+5. If Telegram is configured, sends a notification via `pyfangs.telegram.TelegramNotifier`
 
 Key design principles:
-- **Zero external dependencies** — stdlib only, Python 3.11+
 - **No state file** — the local git checkout is the source of truth
 - **No scheduler built-in** — users call the tool however they want (cron, systemd timer, manual)
 
 ## Project Structure
 
 ```
-src/rp.py               — single-file script: CLI, config loading, GitHub API, git sync
+src/rp.py               — single-file script: CLI, config loading, GitHub API, git sync, notifications
 config.example.toml      — example TOML config
+pyproject.toml           — dependency management (uv sync)
 ```
+
+## Dependencies
+
+Managed via `pyproject.toml` and installed with `uv sync`.
+
+- `pyfangs` (from git, v0.7.2) — provides `TelegramNotifier` for optional Telegram notifications
 
 ## Configuration
 
 Config is a TOML file with:
 - `github_token` (optional) — GitHub PAT for API auth; also accepted via `GITHUB_TOKEN` env var
+- `telegram_bot_token` (optional) — Telegram bot token from @BotFather
+- `telegram_chat_id` (optional) — Telegram chat ID for notifications
 - `[[repos]]` array, each with:
   - `github` — `"owner/repo"` format
   - `local_path` — where to clone/sync
@@ -40,6 +49,7 @@ Config is a TOML file with:
 ## Running
 
 ```bash
+uv sync
 python3 src/rp.py --config config.example.toml
 ```
 

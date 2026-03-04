@@ -1,6 +1,10 @@
 # Optional: GitHub personal access token (avoids 60 req/hr rate limit)
 # github_token = "ghp_..."
 
+# Optional: Telegram notifications on new releases
+# telegram_bot_token = "123456:ABC..."
+# telegram_chat_id = "987654321"
+
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"

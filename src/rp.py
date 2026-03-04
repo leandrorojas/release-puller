@@ -1,6 +1,7 @@
 """release-puller — poll GitHub releases and pull the latest version."""
 
 import argparse
+import asyncio
 import json
 import os
 import subprocess
@@ -9,6 +10,8 @@ import tomllib
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from pyfangs.telegram import TelegramNotifier
 
 
 def get_latest_release(owner: str, repo: str, token: str | None = None) -> str | None:
@@ -70,8 +73,21 @@ def sync_repo(github_url: str, local_path: Path, tag: str) -> None:
     )
 
 
+def notify(bot_token: str, chat_id: str, slug: str, tag: str) -> None:
+    """Send a Telegram notification about a newly synced release."""
+    message = f"[{slug}] new release synced: {tag}"
+
+    async def _send() -> None:
+        async with TelegramNotifier(token=bot_token, chat_id=chat_id) as notifier:
+            await notifier.send(message)
+
+    asyncio.run(_send())
+
+
 def run(config: dict) -> None:
     token = config.get("github_token") or os.environ.get("GITHUB_TOKEN")
+    bot_token = config.get("telegram_bot_token")
+    chat_id = config.get("telegram_chat_id")
 
     repos = config.get("repos", [])
     if not repos:
@@ -114,6 +130,12 @@ def run(config: dict) -> None:
             continue
 
         print(f"[{slug}] synced to {tag}")
+
+        if bot_token and chat_id:
+            try:
+                notify(bot_token, chat_id, slug, tag)
+            except Exception as e:
+                print(f"[{slug}] telegram notification failed: {e}", file=sys.stderr)
 
 
 def load_config(path: Path) -> dict:
