@@ -97,7 +97,11 @@ def run(config: dict) -> None:
             continue
 
         print(f"[{slug}] new release: {tag} (was {current or 'untracked'})")
-        github_url = f"https://github.com/{slug}.git"
+        protocol = repo_cfg.get("protocol", "https")
+        if protocol == "ssh":
+            github_url = f"git@github.com:{slug}.git"
+        else:
+            github_url = f"https://github.com/{slug}.git"
 
         try:
             sync_repo(github_url, local_path, tag)

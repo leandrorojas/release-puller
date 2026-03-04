@@ -33,9 +33,11 @@ Create a TOML config file (see `config.example.toml`):
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"
+# protocol = "ssh"  # default: "https"
 ```
 
-The token can also be set via the `GITHUB_TOKEN` environment variable.
+- `github_token` — also accepted via the `GITHUB_TOKEN` environment variable
+- `protocol` — `"https"` (default) or `"ssh"` per repo. SSH uses your SSH key; HTTPS uses the token.
 
 ## How It Works
 
