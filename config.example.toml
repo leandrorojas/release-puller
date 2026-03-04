@@ -4,3 +4,5 @@
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"
+# Optional: "ssh" or "https" (default: "https")
+# protocol = "ssh"
