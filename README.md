@@ -7,7 +7,13 @@ Zero external dependencies — stdlib only (Python 3.11+).
 ## Usage
 
 ```bash
-python3 src/rp.py --config config.toml
+python3 src/rp.py
+```
+
+By default, it looks for `config.toml` in the same directory as `rp.py`. Override with `--config`:
+
+```bash
+python3 src/rp.py --config /path/to/config.toml
 ```
 
 ## Configuration

@@ -126,11 +126,12 @@ def main() -> None:
         prog="release-puller",
         description="Poll GitHub releases and pull the latest version.",
     )
+    default_config = Path(__file__).resolve().parent / "config.toml"
     parser.add_argument(
         "--config",
-        required=True,
         type=Path,
-        help="Path to TOML config file",
+        default=default_config,
+        help=f"Path to TOML config file (default: {default_config})",
     )
     args = parser.parse_args()
 
