@@ -5,6 +5,10 @@
 # telegram_bot_token = "123456:ABC..."
 # telegram_chat_id = "987654321"
 
+# Optional: healthchecks.io check UUID (also accepted via HEALTHCHECKS_UUID env var).
+# Pings /start at the beginning and success or /fail at the end, with the run's output.
+# healthchecks_uuid = "your-check-uuid"
+
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"
