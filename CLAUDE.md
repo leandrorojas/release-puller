@@ -27,19 +27,20 @@ There is no linter or formatter configured. Python >= 3.12 (uses `tomllib`, `X |
 
 ## Architecture
 
-Everything lives in `src/rp.py` (stdlib only, plus `pyfangs`). Flow per invocation (`run()`):
+Everything lives in `src/rp.py` (stdlib only, plus `pyfangs`). Flow per invocation (`main()` → `run()` → `sync_one()` per repo):
 
-1. Load TOML config (`--config`, default is `config.toml` beside `rp.py`, i.e. `src/config.toml`, not the repo root).
+1. Load TOML config (`--config`, default is `config.toml` beside `rp.py`, i.e. `src/config.toml`, not the repo root). An unreadable file, bad TOML, bad UTF-8 or an empty `repos` list is a config error: exit 1.
 2. For each `[[repos]]` entry: `GET /repos/{owner}/{repo}/releases/latest` via `urllib.request`. A 404 is ambiguous, so it is followed by `GET /repos/{owner}/{repo}`: if the repo exists, it has no releases (skip, success); if not, it is a failure (a typo in the slug, or no token access).
 3. Compare to the local checkout's tag from `git describe --tags --exact-match`. Match → skip.
 4. Otherwise `git clone` (if `local_path` is missing) or `git fetch --tags`, then `git checkout <tag>` (detached HEAD). Clone URL is built from `protocol` (`https` default, or `ssh`).
 5. If both `telegram_bot_token` and `telegram_chat_id` are set, send a notification through `pyfangs.telegram.TelegramNotifier`. It is async and wrapped in `asyncio.run` for each message.
-6. `run()` returns the list of failed slugs. `main()` exits 1 if any failed, and pings healthchecks.io (`/start`, then success or `/fail`) when `healthchecks_uuid` is set. `main()` tees stdout/stderr into a buffer (`_Tee`), and that buffer becomes the ping body.
+6. `sync_one()` returns False on a handled failure. `run()` also wraps each call in a catch-all, so an unexpected exception (git missing from PATH, a bad type in a repo entry) fails only that repo. `run()` returns the failed labels, and `main()` exits 1 if there are any.
+7. When `healthchecks_uuid` is set, `main()` pings `/start` and then, from its `finally` block, success or `/fail`. Everything printed during the run is teed into a buffer (`_Tee`), and that buffer becomes the ping body.
 
 Design invariants:
 - **No state file**: the git checkout on disk is the only source of truth for "current version".
-- **Per-repo failure isolation, but failures are counted**: API, git, and Telegram errors are printed to stderr, recorded, and the loop `continue`s. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
-- **Monitoring never affects the outcome**: `ping_healthchecks` swallows every exception, so a healthchecks outage cannot crash the run or change the exit code.
+- **Per-repo failure isolation, but failures are counted**: API, git, and Telegram errors are printed to stderr, recorded, and the loop moves on to the next repo. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
+- **Monitoring never affects the outcome**: `ping_healthchecks` swallows every exception (and is a no-op without a UUID), so a healthchecks outage cannot crash the run or change the exit code.
 - Git operations shell out to `git` via `subprocess`. There is no git library.
 
 ## Configuration
