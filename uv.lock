@@ -719,8 +719,16 @@ dependencies = [
     { name = "pyfangs" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [{ name = "pyfangs", git = "ssh://git@github.com/leandrorojas/pyfangs?rev=v0.7.2" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
 
 [[package]]
 name = "requests"

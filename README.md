@@ -26,6 +26,12 @@ By default, it looks for `config.toml` in the same directory as `rp.py`. Overrid
 python3 src/rp.py --config /path/to/config.toml
 ```
 
+## Tests
+
+```bash
+uv run pytest
+```
+
 ## Configuration
 
 Create a TOML config file (see `config.example.toml`):
@@ -38,6 +44,9 @@ Create a TOML config file (see `config.example.toml`):
 # telegram_bot_token = "123456:ABC..."
 # telegram_chat_id = "987654321"
 
+# Optional: healthchecks.io check UUID
+# healthchecks_uuid = "your-check-uuid"
+
 [[repos]]
 github = "owner/repo"
 local_path = "/home/user/projects/repo"
@@ -47,6 +56,7 @@ local_path = "/home/user/projects/repo"
 - `github_token` — also accepted via the `GITHUB_TOKEN` environment variable
 - `protocol` — `"https"` (default) or `"ssh"` per repo. SSH uses your SSH key; HTTPS uses the token.
 - `telegram_bot_token` / `telegram_chat_id` — when both are set, a Telegram message is sent after each new release is synced. Get a token from [@BotFather](https://t.me/BotFather).
+- `healthchecks_uuid` — also accepted via the `HEALTHCHECKS_UUID` environment variable. Create the check in the healthchecks.io dashboard first.
 
 ## How It Works
 
@@ -57,5 +67,22 @@ On each invocation:
 3. If the repo is already cloned and checked out at that tag — skips (already up to date)
 4. If it's a new tag — clones the repo (or fetches if it already exists) and checks out the tag
 5. If Telegram is configured, sends a notification: `[owner/repo] new release synced: v1.2.3`
+
+One failing repo doesn't stop the others.
+
+## Exit status and monitoring
+
+The process exits `1` if the config can't be loaded or if **any** repo failed, and `0` otherwise. The reason is printed to stderr, followed by a `failed: owner/repo, ...` summary line.
+
+| Outcome | Result |
+|---|---|
+| Up to date / new release synced | success |
+| Repo exists but has no releases | success |
+| GitHub API error (rate limit, network, auth, repo not found) | failure |
+| git clone/fetch/checkout error | failure |
+| Telegram notification failed | failure |
+| No repos configured | failure |
+
+If `healthchecks_uuid` is set, rp.py pings `https://hc-ping.com/<uuid>/start` when it starts. At the end it pings `/<uuid>` on success or `/<uuid>/fail` on failure, with the run's output as the body. If a ping fails, rp.py prints a warning and carries on. The exit code stays the same.
 
 There is no built-in scheduler. Use cron, systemd timers, or similar to run periodically.
