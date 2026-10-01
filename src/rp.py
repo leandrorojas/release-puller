@@ -194,8 +194,10 @@ def sync_one(label: str, repo_cfg, token: str | None, bot_token: str | None, cha
         try:
             notify(bot_token, chat_id, slug, tag)
         except Exception as e:
-            print(f"[{slug}] telegram notification failed: {e}", file=sys.stderr)
-            return False
+            # A warning, not a failure: the sync itself worked, and Telegram's flood
+            # control fires on exactly the runs that pulled something. The line still
+            # reaches cron.log and the healthchecks success body.
+            print(f"[{slug}] warning: telegram notification failed: {e}", file=sys.stderr)
 
     return True
 
@@ -203,8 +205,9 @@ def sync_one(label: str, repo_cfg, token: str | None, bot_token: str | None, cha
 def run(config: dict) -> list[str]:
     """Sync every configured repo. Returns the labels of repos that failed.
 
-    "Up to date" and "no releases" are successes. Config, API, git and
-    Telegram errors are failures. One repo failing never stops the others.
+    "Up to date" and "no releases" are successes, and so is a sync whose
+    Telegram notification failed (that only prints a warning). Config, API and
+    git errors are failures. One repo failing never stops the others.
     """
     token = config.get("github_token") or os.environ.get("GITHUB_TOKEN")
     bot_token = config.get("telegram_bot_token")
