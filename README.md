@@ -80,9 +80,13 @@ The process exits `1` if the config can't be loaded or if **any** repo failed, a
 | Repo exists but has no releases | success |
 | GitHub API error (rate limit, network, auth, repo not found) | failure |
 | git clone/fetch/checkout error | failure |
-| Telegram notification failed | failure |
+| Telegram notification failed | success, with a warning on stderr |
 | No repos configured | failure |
 
 If `healthchecks_uuid` is set, rp.py pings `https://hc-ping.com/<uuid>/start` when it starts. At the end it pings `/<uuid>` on success or `/<uuid>/fail` on failure, with the run's output as the body. If a ping fails, rp.py prints a warning and carries on. The exit code stays the same.
+
+Because rp.py sends `/start`, the check's grace time is also the longest a run may take. If a run doesn't finish within it, healthchecks counts the run as failed. Normal runs take seconds, so set the grace time with room for a slow first clone. The same mechanism also flags a hung run.
+
+A failed Telegram notification doesn't fail the run: the sync itself worked. The warning is in the success ping's body and in the log.
 
 There is no built-in scheduler. Use cron, systemd timers, or similar to run periodically.

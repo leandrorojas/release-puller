@@ -1,6 +1,6 @@
 [project]
 name = "release-puller"
-version = "0.0.1"
+version = "0.0.3"
 requires-python = ">=3.12"
 dependencies = ["pyfangs"]
 

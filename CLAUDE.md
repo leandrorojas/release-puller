@@ -39,7 +39,7 @@ Everything lives in `src/rp.py` (stdlib only, plus `pyfangs`). Flow per invocati
 
 Design invariants:
 - **No state file**: the git checkout on disk is the only source of truth for "current version".
-- **Per-repo failure isolation, but failures are counted**: API, git, and Telegram errors are printed to stderr, recorded, and the loop moves on to the next repo. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
+- **Per-repo failure isolation, but failures are counted**: API and git errors are printed to stderr, recorded, and the loop moves on to the next repo. A failed Telegram notification is only a warning, because the sync succeeded and Telegram's flood control fires on exactly the runs that pulled something. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
 - **Monitoring never affects the outcome**: `ping_healthchecks` swallows every exception (and is a no-op without a UUID), so a healthchecks outage cannot crash the run or change the exit code.
 - Git operations shell out to `git` via `subprocess`. There is no git library.
 
@@ -52,6 +52,6 @@ A real `config.toml` holds secrets and is gitignored.
 ## Notes
 
 - `pyfangs` is pinned by git tag in `pyproject.toml` (`[tool.uv.sources]`). To bump it, change `rev` and re-run `uv sync` so `uv.lock` updates.
-- release-puller pulls its own releases, and in production it also deploys other repos (for example `calendar-merge`). Tagging a release here ships on the next cron run.
+- release-puller pulls its own releases, and in production it also deploys other repos (for example `calendar-merge`). Publishing a GitHub Release here ships it on the next cron run. A bare tag isn't enough: the code reads `/releases/latest`. Bump `version` in `pyproject.toml` (and run `uv lock`) in the PR before the release.
 - To verify under cron conditions, run it with an empty environment. An interactive shell's PATH can hide problems. Example: `env -i HOME=$HOME PATH=/usr/bin:/bin /bin/sh -c 'cd <repo> && <abs path to uv> run python3 src/rp.py'`.
 - Keep `README.md` in sync when changing config keys or CLI flags. The README documents both.
