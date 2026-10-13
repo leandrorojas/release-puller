@@ -54,4 +54,7 @@ A real `config.toml` holds secrets and is gitignored.
 - `pyfangs` is pinned by git tag in `pyproject.toml` (`[tool.uv.sources]`). To bump it, change `rev` and re-run `uv sync` so `uv.lock` updates.
 - release-puller pulls its own releases, and in production it also deploys other repos (for example `calendar-merge`). Tagging a release here ships on the next cron run.
 - To verify under cron conditions, run it with an empty environment. An interactive shell's PATH can hide problems. Example: `env -i HOME=$HOME PATH=/usr/bin:/bin /bin/sh -c 'cd <repo> && <abs path to uv> run python3 src/rp.py'`.
+- **It only updates from published GitHub Releases**, not tags: a bare tag, a draft or a prerelease is invisible, so the host stays on the old version while its healthchecks.io check reads green.
+- **Never `git pull` a checkout it manages** (its own production checkout included). On a branch head `git describe --exact-match` finds no tag, so the next run checks out the old tag and silently reverts the pull. Publish a Release and let it sync.
+- **Its healthchecks.io check is in cron-schedule mode, timezone `America/Argentina/Buenos_Aires`**, not period mode (which false-alarms through the overnight gap). It exits non-zero on per-repo failures, so the check catches "ran badly" as well as "didn't run". Its cron line has no `curl` ping on purpose: the app pings the check itself, and a second ping would overwrite the run output.
 - Keep `README.md` in sync when changing config keys or CLI flags. The README documents both.
