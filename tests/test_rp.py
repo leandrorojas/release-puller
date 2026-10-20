@@ -3,6 +3,7 @@ import sys
 import urllib.error
 
 import pytest
+from telegram.error import BadRequest, Forbidden, InvalidToken, NetworkError, RetryAfter, TimedOut
 
 import rp
 
@@ -14,7 +15,7 @@ REAL_SYNC_REPO = rp.sync_repo
 def world(monkeypatch, tmp_path):
     """Fake GitHub/git/Telegram/healthchecks. Tests set `latest` and `current` per slug."""
     state = {"latest": {}, "current": {}, "api_errors": set(), "git_errors": set(),
-             "notify_error": False, "pings": []}
+             "notify_errors": {}, "pings": []}
 
     def get_latest_release(owner, repo, token=None):
         slug = f"{owner}/{repo}"
@@ -30,8 +31,8 @@ def world(monkeypatch, tmp_path):
             raise subprocess.CalledProcessError(128, ["git", "checkout", tag], stderr="fatal: bad tag")
 
     def notify(bot_token, chat_id, slug, tag):
-        if state["notify_error"]:
-            raise RuntimeError("telegram down")
+        if slug in state["notify_errors"]:
+            raise state["notify_errors"][slug]
 
     def ping_healthchecks(uuid, suffix="", body=""):
         if uuid:
@@ -104,15 +105,35 @@ def test_git_error_exits_nonzero_with_git_stderr(world, capsys):
     assert "fatal: bad tag" in capsys.readouterr().err
 
 
-def test_telegram_failure_is_a_warning_not_a_failure(world, capsys):
-    world["latest"] = {"o/a": "v2"}
-    world["notify_error"] = True
-    extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\nhealthchecks_uuid = "abc"\n'
-    assert world["run"](["o/a"], extra) == 0
-    assert "[o/a] warning: telegram notification failed: telegram down" in capsys.readouterr().err
+TELEGRAM = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\nhealthchecks_uuid = "abc"\n'
+
+
+@pytest.mark.parametrize("error", [RetryAfter(123), TimedOut(), NetworkError("connection reset")])
+def test_temporary_telegram_failure_is_a_warning_and_keeps_going(world, capsys, error):
+    world["latest"] = {"o/a": "v2", "o/b": "v3"}
+    world["notify_errors"] = {"o/a": error}
+    assert world["run"](["o/a", "o/b"], TELEGRAM) == 0
+    err = capsys.readouterr().err
+    assert "[o/a] warning: telegram notification failed" in err
+    assert not [line for line in err.splitlines() if line.startswith("failed:")]
     uuid, suffix, body = world["pings"][-1]
     assert suffix == ""  # success ping, not /fail
-    assert "telegram notification failed" in body
+    assert "[o/b] synced to v3" in body
+
+
+@pytest.mark.parametrize("error", [BadRequest("Chat not found"), Forbidden("bot was kicked"),
+                                   InvalidToken(), RuntimeError("bug")])
+def test_permanent_telegram_failure_fails_the_repo(world, capsys, error):
+    world["latest"] = {"o/a": "v2", "o/b": "v3"}
+    world["notify_errors"] = {"o/a": error}
+    assert world["run"](["o/a", "o/b"], TELEGRAM) == 1
+    err = capsys.readouterr().err
+    assert "[o/a] telegram notification failed" in err
+    assert "warning" not in err
+    assert [line for line in err.splitlines() if line.startswith("failed:")]
+    uuid, suffix, body = world["pings"][-1]
+    assert suffix == "/fail"
+    assert "[o/b] synced to v3" in body
 
 
 def test_no_repos_configured_exits_nonzero(world):
