@@ -57,9 +57,9 @@ A real `config.toml` holds secrets and is gitignored.
 
 ## Decisions
 
-- **Telegram goes through stdlib `urllib`, not a library.** The alternative was keeping pyfangs and getting its `Bot.close()` call fixed. Rejected: a private SSH dependency for one POST, and `Bot.close()` returns 429 for the first 10 minutes after launch, which likely replaced the real error (not confirmed as the cause of a live failure). Consequence: no retry and no flood-control handling.
+- **Telegram goes through stdlib `urllib`, not a library.** The alternative was keeping pyfangs and getting its `Bot.close()` call fixed. Rejected: a private SSH dependency for one POST, and `Bot.close()` returns 429 for the first 10 minutes after launch, the likely cause of the "Flood control exceeded" alert on a sync that had worked (unconfirmed). Consequence: no retry and no flood-control handling.
 - **A failed Telegram notification is a warning, not a failure.** The sync itself worked. Consequence: a permanently broken notifier (revoked token, wrong chat ID) still gives a green run, and a missed notification is never retried because the next run sees the tag as current.
 
 ## Removed on purpose
 
-- **pyfangs**: replaced by `urllib` in `notify()`. Don't bring it back for Telegram.
+- **pyfangs**: replaced by `urllib` in `notify()`. It was a private SSH dependency for one POST, and its `Bot.close()` call returned 429 (see Decisions). Don't bring it back for Telegram.
