@@ -31,7 +31,7 @@ Everything lives in `src/rp.py` (stdlib only). Flow per invocation (`main()` →
 2. For each `[[repos]]` entry: `GET /repos/{owner}/{repo}/releases/latest` via `urllib.request`. A 404 is ambiguous, so it is followed by `GET /repos/{owner}/{repo}`: if the repo exists, it has no releases (skip, success); if not, it is a failure (a typo in the slug, or no token access).
 3. Compare to the local checkout's tag from `git describe --tags --exact-match`. Match → skip.
 4. Otherwise `git clone` (if `local_path` is missing) or `git fetch --tags`, then `git checkout <tag>` (detached HEAD). Clone URL is built from `protocol` (`https` default, or `ssh`).
-5. If both `telegram_bot_token` and `telegram_chat_id` are set, send a plain-text `sendMessage` through the Telegram Bot API via `urllib`. An HTTP error is re-raised with Telegram's own description.
+5. If both `telegram_bot_token` and `telegram_chat_id` are set, send a Telegram notification.
 6. `sync_one()` returns False on a handled failure. `run()` also wraps each call in a catch-all, so an unexpected exception (git missing from PATH, a bad type in a repo entry) fails only that repo. `run()` returns the failed labels, and `main()` exits 1 if there are any.
 7. When `healthchecks_uuid` is set, `main()` pings `/start` and then, from its `finally` block, success or `/fail`. Everything printed during the run is teed into a buffer (`_Tee`), and that buffer becomes the ping body.
 
