@@ -1,4 +1,5 @@
 import contextlib
+import http.client
 import io
 import subprocess
 import sys
@@ -361,3 +362,39 @@ def test_notify_surfaces_telegram_error_without_token(monkeypatch):
         rp.notify("SECRET", "42", "o/a", "v2")
     assert "400" in str(exc.value) and "chat not found" in str(exc.value)
     assert "SECRET" not in str(exc.value)
+
+
+def _notify_error(monkeypatch, exc, token="SECRET"):
+    def urlopen(req, timeout):
+        raise exc
+
+    monkeypatch.setattr(rp.urllib.request, "urlopen", urlopen)
+    with pytest.raises(RuntimeError) as exc_info:
+        rp.notify(token, "42", "o/a", "v2")
+    return str(exc_info.value)
+
+
+def test_notify_non_http_error_does_not_leak_token(monkeypatch):
+    msg = _notify_error(monkeypatch, http.client.InvalidURL("bad '/botSECRET/sendMessage'"))
+    assert msg == "Telegram request failed: InvalidURL"
+
+
+def test_notify_real_invalid_token_does_not_leak_it():
+    with pytest.raises(RuntimeError) as exc:
+        rp.notify("AB\nSECRET", "42", "o/a", "v2")
+    assert str(exc.value) == "Telegram request failed: InvalidURL"
+
+
+def test_notify_network_error_names_the_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.URLError("connection refused"))
+    assert msg == "Telegram request failed: connection refused"
+
+
+def test_notify_non_json_error_body_falls_back_to_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.HTTPError("url", 502, "Bad Gateway", {}, io.BytesIO(b"<html>")))
+    assert msg == "Telegram HTTP 502: Bad Gateway"
+
+
+def test_notify_json_error_body_without_description_falls_back_to_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.HTTPError("url", 400, "Bad Request", {}, io.BytesIO(b'{"ok":false}')))
+    assert msg == "Telegram HTTP 400: Bad Request"

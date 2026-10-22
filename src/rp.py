@@ -102,7 +102,8 @@ def sync_repo(github_url: str, local_path: Path, tag: str) -> None:
 def notify(bot_token: str, chat_id: str, slug: str, tag: str) -> None:
     """Send a Telegram notification about a newly synced release.
 
-    Raises with Telegram's own error description, never the URL (it holds the token).
+    Raises with Telegram's own error description. The message never quotes the
+    request URL, because the bot token sits in it: other errors give their type only.
     """
     data = urllib.parse.urlencode(
         {"chat_id": chat_id, "text": f"[{slug}] new release synced: {tag}"}
@@ -116,7 +117,14 @@ def notify(bot_token: str, chat_id: str, slug: str, tag: str) -> None:
             detail = json.loads(e.read())["description"]
         except Exception:
             detail = e.reason
-        raise RuntimeError(f"Telegram HTTP {e.code}: {detail}") from None
+        message = f"Telegram HTTP {e.code}: {detail}"
+    except urllib.error.URLError as e:
+        message = f"Telegram request failed: {e.reason}"
+    except Exception as e:
+        message = f"Telegram request failed: {type(e).__name__}"
+    else:
+        return
+    raise RuntimeError(message) from None
 
 
 def ping_healthchecks(uuid: str | None, suffix: str = "", body: str = "") -> None:
