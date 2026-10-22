@@ -54,3 +54,12 @@ A real `config.toml` holds secrets and is gitignored.
 - **Ship changes only by publishing a Release, never by changing a managed checkout on the host.** A branch checkout or a local commit is undone by the next run (with a false "new release synced" alert, if Telegram is set up) or left in place unnoticed. Uncommitted edits survive, so the host runs unreleased code while reporting up to date, until a release that touches those files fails on every run.
 - To verify under cron conditions, run it with an empty environment. An interactive shell's PATH can hide problems. Example: `env -i HOME=$HOME PATH=/usr/bin:/bin /bin/sh -c 'cd <repo> && <abs path to uv> run python3 src/rp.py'`.
 - Keep `README.md` in sync when changing config keys or CLI flags. The README documents both.
+
+## Decisions
+
+- **Telegram goes through stdlib `urllib`, not a library.** The alternative was keeping pyfangs and getting its `Bot.close()` call fixed. Rejected: a private SSH dependency for one POST, and `Bot.close()` returns 429 for the first 10 minutes after launch, which likely replaced the real error (not confirmed as the cause of a live failure). Consequence: no retry and no flood-control handling.
+- **A failed Telegram notification is a warning, not a failure.** The sync itself worked. Consequence: a permanently broken notifier (revoked token, wrong chat ID) still gives a green run, and a missed notification is never retried because the next run sees the tag as current.
+
+## Removed on purpose
+
+- **pyfangs**: replaced by `urllib` in `notify()`. Don't bring it back for Telegram.
