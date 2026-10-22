@@ -1,3 +1,5 @@
+import contextlib
+import io
 import subprocess
 import sys
 import urllib.error
@@ -104,11 +106,15 @@ def test_git_error_exits_nonzero_with_git_stderr(world, capsys):
     assert "fatal: bad tag" in capsys.readouterr().err
 
 
-def test_telegram_failure_exits_nonzero(world):
+def test_telegram_failure_is_a_warning_not_a_failure(world, capsys):
     world["latest"] = {"o/a": "v2"}
     world["notify_error"] = True
-    extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\n'
-    assert world["run"](["o/a"], extra) == 1
+    extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\nhealthchecks_uuid = "abc"\n'
+    assert world["run"](["o/a"], extra) == 0
+    assert "[o/a] warning: telegram notification failed: telegram down" in capsys.readouterr().err
+    uuid, suffix, body = world["pings"][-1]
+    assert suffix == ""  # success ping, not /fail
+    assert "telegram notification failed" in body
 
 
 def test_no_repos_configured_exits_nonzero(world):
@@ -329,3 +335,29 @@ def test_tee_forwards_stream_attributes(world, monkeypatch):
     world["latest"] = {"o/a": "v2"}
     extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\n'
     assert world["run"](["o/a"], extra) == 0
+
+
+def _http_error(code, body):
+    return urllib.error.HTTPError("url", code, "msg", {}, io.BytesIO(body))
+
+
+def test_notify_posts_send_message(monkeypatch):
+    seen = {}
+
+    def urlopen(req, timeout):
+        seen["url"], seen["data"] = req.full_url, req.data
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(rp.urllib.request, "urlopen", urlopen)
+    rp.notify("TOK", "42", "o/a", "v2")
+    assert seen["url"] == "https://api.telegram.org/botTOK/sendMessage"
+    assert b"chat_id=42" in seen["data"] and b"o%2Fa" in seen["data"]
+
+
+def test_notify_surfaces_telegram_error_without_token(monkeypatch):
+    err = _http_error(400, b'{"ok":false,"description":"Bad Request: chat not found"}')
+    monkeypatch.setattr(rp.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(err))
+    with pytest.raises(RuntimeError) as exc:
+        rp.notify("SECRET", "42", "o/a", "v2")
+    assert "400" in str(exc.value) and "chat not found" in str(exc.value)
+    assert "SECRET" not in str(exc.value)

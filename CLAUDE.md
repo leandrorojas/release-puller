@@ -9,12 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install deps. pyfangs is a private git dep over SSH — load your key first,
-# or `uv sync` hangs silently waiting for auth (use `uv sync -v` to see the prompt).
-eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
+# Install the test tools (the app itself has no dependencies)
 uv sync
 
-# Run (uv run uses the project venv, which is needed for pyfangs)
+# Run
 uv run src/rp.py                          # default config: src/config.toml (next to rp.py)
 uv run src/rp.py --config path/to/config.toml
 
@@ -27,19 +25,19 @@ There is no linter or formatter configured. Python >= 3.12 (uses `tomllib`, `X |
 
 ## Architecture
 
-Everything lives in `src/rp.py` (stdlib only, plus `pyfangs`). Flow per invocation (`main()` → `run()` → `sync_one()` per repo):
+Everything lives in `src/rp.py` (stdlib only). Flow per invocation (`main()` → `run()` → `sync_one()` per repo):
 
 1. Load TOML config (`--config`, default is `config.toml` beside `rp.py`, i.e. `src/config.toml`, not the repo root). An unreadable file, bad TOML, bad UTF-8 or an empty `repos` list is a config error: exit 1.
 2. For each `[[repos]]` entry: `GET /repos/{owner}/{repo}/releases/latest` via `urllib.request`. A 404 is ambiguous, so it is followed by `GET /repos/{owner}/{repo}`: if the repo exists, it has no releases (skip, success); if not, it is a failure (a typo in the slug, or no token access).
 3. Compare to the local checkout's tag from `git describe --tags --exact-match`. Match → skip.
 4. Otherwise `git clone` (if `local_path` is missing) or `git fetch --tags`, then `git checkout <tag>` (detached HEAD). Clone URL is built from `protocol` (`https` default, or `ssh`).
-5. If both `telegram_bot_token` and `telegram_chat_id` are set, send a notification through `pyfangs.telegram.TelegramNotifier`. It is async and wrapped in `asyncio.run` for each message.
+5. If both `telegram_bot_token` and `telegram_chat_id` are set, send a plain-text `sendMessage` through the Telegram Bot API via `urllib`. An HTTP error is re-raised with Telegram's own description.
 6. `sync_one()` returns False on a handled failure. `run()` also wraps each call in a catch-all, so an unexpected exception (git missing from PATH, a bad type in a repo entry) fails only that repo. `run()` returns the failed labels, and `main()` exits 1 if there are any.
 7. When `healthchecks_uuid` is set, `main()` pings `/start` and then, from its `finally` block, success or `/fail`. Everything printed during the run is teed into a buffer (`_Tee`), and that buffer becomes the ping body.
 
 Design invariants:
 - **No state file**: the git checkout on disk is the only source of truth for "current version".
-- **Per-repo failure isolation, but failures are counted**: API, git, and Telegram errors are printed to stderr, recorded, and the loop moves on to the next repo. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
+- **Per-repo failure isolation, but failures are counted**: API and git errors are printed to stderr, recorded, and the loop moves on to the next repo. A failed Telegram notification is only a warning, because the sync itself succeeded. The exit code is the job's only outcome signal for cron and monitoring. "Up to date" and "no releases" must stay successes, because they are the normal case on almost every run.
 - **Monitoring never affects the outcome**: `ping_healthchecks` swallows every exception (and is a no-op without a UUID), so a healthchecks outage cannot crash the run or change the exit code.
 - Git operations shell out to `git` via `subprocess`. There is no git library.
 
@@ -51,9 +49,8 @@ A real `config.toml` holds secrets and is gitignored.
 
 ## Notes
 
-- `pyfangs` is pinned by git tag in `pyproject.toml` (`[tool.uv.sources]`). To bump it, change `rev` and re-run `uv sync` so `uv.lock` updates.
 - release-puller pulls its own releases, and in production it also deploys other repos (for example `calendar-merge`). In every repo it manages, only the GitHub Release marked latest ships. A bare tag, a draft or a prerelease never does. If the latest mark moves to an older Release (by deleting the newest, turning it into a draft or prerelease, or marking an older one latest), the next run rolls the host back and reports it as a new release, with no error.
-- When releasing this repo, bump `version` in `pyproject.toml` and run `uv lock` (SSH key loaded, as under Commands) in the PR first.
+- When releasing this repo, bump `version` in `pyproject.toml` and run `uv lock` in the PR first.
 - **Ship changes only by publishing a Release, never by changing a managed checkout on the host.** A branch checkout or a local commit is undone by the next run (with a false "new release synced" alert, if Telegram is set up) or left in place unnoticed. Uncommitted edits survive, so the host runs unreleased code while reporting up to date, until a release that touches those files fails on every run.
 - To verify under cron conditions, run it with an empty environment. An interactive shell's PATH can hide problems. Example: `env -i HOME=$HOME PATH=/usr/bin:/bin /bin/sh -c 'cd <repo> && <abs path to uv> run python3 src/rp.py'`.
 - Keep `README.md` in sync when changing config keys or CLI flags. The README documents both.
