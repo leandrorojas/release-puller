@@ -1,3 +1,6 @@
+import contextlib
+import http.client
+import io
 import subprocess
 import sys
 import urllib.error
@@ -104,11 +107,15 @@ def test_git_error_exits_nonzero_with_git_stderr(world, capsys):
     assert "fatal: bad tag" in capsys.readouterr().err
 
 
-def test_telegram_failure_exits_nonzero(world):
+def test_telegram_failure_is_a_warning_not_a_failure(world, capsys):
     world["latest"] = {"o/a": "v2"}
     world["notify_error"] = True
-    extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\n'
-    assert world["run"](["o/a"], extra) == 1
+    extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\nhealthchecks_uuid = "abc"\n'
+    assert world["run"](["o/a"], extra) == 0
+    assert "[o/a] warning: telegram notification failed: telegram down" in capsys.readouterr().err
+    uuid, suffix, body = world["pings"][-1]
+    assert suffix == ""  # success ping, not /fail
+    assert "telegram notification failed" in body
 
 
 def test_no_repos_configured_exits_nonzero(world):
@@ -329,3 +336,65 @@ def test_tee_forwards_stream_attributes(world, monkeypatch):
     world["latest"] = {"o/a": "v2"}
     extra = 'telegram_bot_token = "t"\ntelegram_chat_id = "c"\n'
     assert world["run"](["o/a"], extra) == 0
+
+
+def _http_error(code, body):
+    return urllib.error.HTTPError("url", code, "msg", {}, io.BytesIO(body))
+
+
+def test_notify_posts_send_message(monkeypatch):
+    seen = {}
+
+    def urlopen(req, timeout):
+        seen["url"], seen["data"] = req.full_url, req.data
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(rp.urllib.request, "urlopen", urlopen)
+    rp.notify("TOK", "42", "o/a", "v2")
+    assert seen["url"] == "https://api.telegram.org/botTOK/sendMessage"
+    assert b"chat_id=42" in seen["data"] and b"o%2Fa" in seen["data"]
+
+
+def test_notify_surfaces_telegram_error_without_token(monkeypatch):
+    err = _http_error(400, b'{"ok":false,"description":"Bad Request: chat not found"}')
+    monkeypatch.setattr(rp.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(err))
+    with pytest.raises(RuntimeError) as exc:
+        rp.notify("SECRET", "42", "o/a", "v2")
+    assert "400" in str(exc.value) and "chat not found" in str(exc.value)
+    assert "SECRET" not in str(exc.value)
+
+
+def _notify_error(monkeypatch, exc, token="SECRET"):
+    def urlopen(req, timeout):
+        raise exc
+
+    monkeypatch.setattr(rp.urllib.request, "urlopen", urlopen)
+    with pytest.raises(RuntimeError) as exc_info:
+        rp.notify(token, "42", "o/a", "v2")
+    return str(exc_info.value)
+
+
+def test_notify_non_http_error_does_not_leak_token(monkeypatch):
+    msg = _notify_error(monkeypatch, http.client.InvalidURL("bad '/botSECRET/sendMessage'"))
+    assert msg == "Telegram request failed: InvalidURL"
+
+
+def test_notify_real_invalid_token_does_not_leak_it():
+    with pytest.raises(RuntimeError) as exc:
+        rp.notify("AB\nSECRET", "42", "o/a", "v2")
+    assert str(exc.value) == "Telegram request failed: InvalidURL"
+
+
+def test_notify_network_error_names_the_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.URLError("connection refused"))
+    assert msg == "Telegram request failed: connection refused"
+
+
+def test_notify_non_json_error_body_falls_back_to_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.HTTPError("url", 502, "Bad Gateway", {}, io.BytesIO(b"<html>")))
+    assert msg == "Telegram HTTP 502: Bad Gateway"
+
+
+def test_notify_json_error_body_without_description_falls_back_to_reason(monkeypatch):
+    msg = _notify_error(monkeypatch, urllib.error.HTTPError("url", 400, "Bad Request", {}, io.BytesIO(b'{"ok":false}')))
+    assert msg == "Telegram HTTP 400: Bad Request"

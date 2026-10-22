@@ -1,7 +1,6 @@
 """release-puller — poll GitHub releases and pull the latest version."""
 
 import argparse
-import asyncio
 import json
 import os
 import subprocess
@@ -9,11 +8,11 @@ import sys
 import tomllib
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from pyfangs.telegram import TelegramNotifier
-
+TELEGRAM_BASE_URL = "https://api.telegram.org"
 HEALTHCHECKS_BASE_URL = "https://hc-ping.com"
 # healthchecks.io keeps at most 100 kB of each ping body
 HEALTHCHECKS_MAX_BODY = 100_000
@@ -101,14 +100,31 @@ def sync_repo(github_url: str, local_path: Path, tag: str) -> None:
 
 
 def notify(bot_token: str, chat_id: str, slug: str, tag: str) -> None:
-    """Send a Telegram notification about a newly synced release."""
-    message = f"[{slug}] new release synced: {tag}"
+    """Send a Telegram notification about a newly synced release.
 
-    async def _send() -> None:
-        async with TelegramNotifier(token=bot_token, chat_id=chat_id) as notifier:
-            await notifier.send(message)
-
-    asyncio.run(_send())
+    Raises with Telegram's own error description. The message never quotes the
+    request URL, because the bot token sits in it: other errors give their type only.
+    """
+    data = urllib.parse.urlencode(
+        {"chat_id": chat_id, "text": f"[{slug}] new release synced: {tag}"}
+    ).encode()
+    req = urllib.request.Request(f"{TELEGRAM_BASE_URL}/bot{bot_token}/sendMessage", data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            pass
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read())["description"]
+        except Exception:
+            detail = e.reason
+        message = f"Telegram HTTP {e.code}: {detail}"
+    except urllib.error.URLError as e:
+        message = f"Telegram request failed: {e.reason}"
+    except Exception as e:
+        message = f"Telegram request failed: {type(e).__name__}"
+    else:
+        return
+    raise RuntimeError(message) from None
 
 
 def ping_healthchecks(uuid: str | None, suffix: str = "", body: str = "") -> None:
@@ -194,8 +210,9 @@ def sync_one(label: str, repo_cfg, token: str | None, bot_token: str | None, cha
         try:
             notify(bot_token, chat_id, slug, tag)
         except Exception as e:
-            print(f"[{slug}] telegram notification failed: {e}", file=sys.stderr)
-            return False
+            # A warning, not a failure: the sync itself worked. The line still
+            # reaches cron.log and the healthchecks success body.
+            print(f"[{slug}] warning: telegram notification failed: {e}", file=sys.stderr)
 
     return True
 
@@ -203,8 +220,9 @@ def sync_one(label: str, repo_cfg, token: str | None, bot_token: str | None, cha
 def run(config: dict) -> list[str]:
     """Sync every configured repo. Returns the labels of repos that failed.
 
-    "Up to date" and "no releases" are successes. Config, API, git and
-    Telegram errors are failures. One repo failing never stops the others.
+    "Up to date" and "no releases" are successes, and so is a sync whose
+    Telegram notification failed (that only prints a warning). Config, API and
+    git errors are failures. One repo failing never stops the others.
     """
     token = config.get("github_token") or os.environ.get("GITHUB_TOKEN")
     bot_token = config.get("telegram_bot_token")

@@ -4,15 +4,7 @@ Polls GitHub releases and pulls the latest version when a new one is detected.
 
 ## Install
 
-The `pyfangs` dependency is fetched from a private GitHub repo via SSH. Make sure your SSH key is loaded before running `uv sync`, otherwise the command will hang silently waiting for authentication:
-
-```bash
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
-uv sync
-```
-
-If `uv sync` appears stuck, run `uv sync -v` to see verbose output and get the SSH passphrase prompt.
+No dependencies beyond Python 3.12+ and `git`. `uv sync` installs the test tools.
 
 ## Usage
 
@@ -80,9 +72,11 @@ The process exits `1` if the config can't be loaded or if **any** repo failed, a
 | Repo exists but has no releases | success |
 | GitHub API error (rate limit, network, auth, repo not found) | failure |
 | git clone/fetch/checkout error | failure |
-| Telegram notification failed | failure |
+| Telegram notification failed | success, with a warning on stderr |
 | No repos configured | failure |
 
 If `healthchecks_uuid` is set, rp.py pings `https://hc-ping.com/<uuid>/start` when it starts. At the end it pings `/<uuid>` on success or `/<uuid>/fail` on failure, with the run's output as the body. If a ping fails, rp.py prints a warning and carries on. The exit code stays the same.
+
+A failed Telegram notification doesn't fail the run: the sync itself worked. The warning is in the success ping's body and in the log.
 
 There is no built-in scheduler. Use cron, systemd timers, or similar to run periodically.
